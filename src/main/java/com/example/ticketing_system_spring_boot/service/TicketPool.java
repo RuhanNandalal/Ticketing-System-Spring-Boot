@@ -24,12 +24,13 @@ public class TicketPool {
                 .orElse(defaultMaxCapacity);
     }
 
-    public synchronized void addTicket(Ticket ticket) throws InterruptedException {
-        while (tickets.size() >= maxCapacity) {
-            wait(); // Wait until there's space in the pool
+    public synchronized boolean addTicket(Ticket ticket) throws InterruptedException {
+        if (tickets.size() >= maxCapacity) {
+            return false; // Reject ticket if the pool is full
         }
         tickets.add(ticket);
         notifyAll(); // Notify waiting consumers
+        return true; // Successfully added ticket
     }
 
     public synchronized Ticket retrieveTicket() throws InterruptedException {

@@ -19,7 +19,14 @@ public class SystemConfiguration {
     private int customerRetrievalRate;
     private int ticketReleaseRate;
 
+    public SystemConfiguration() {
+    }
+
     public int getMaxTicketCapacity() {
         return maxTicketCapacity;
+    }
+    public SystemConfiguration(Long id, int maxTicketCapacity) {
+        this.id = id;
+        this.maxTicketCapacity = maxTicketCapacity;
     }
 }
