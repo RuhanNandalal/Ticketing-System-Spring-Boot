@@ -51,7 +51,13 @@ public class ConsumerService {
 
     public void stopConsumers() {
         running = false;
-        consumerThreads.forEach(Thread::interrupt);
+        consumerThreads.forEach(thread -> {
+            try {
+                thread.join(); // Wait for threads to terminate
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
         consumerThreads.clear();
     }
 }

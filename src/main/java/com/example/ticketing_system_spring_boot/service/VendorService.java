@@ -54,7 +54,13 @@ public class VendorService {
 
     public void stopVendors() {
         running = false;
-        vendorThreads.forEach(Thread::interrupt);
+        vendorThreads.forEach(thread -> {
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
         vendorThreads.clear();
     }
 }
