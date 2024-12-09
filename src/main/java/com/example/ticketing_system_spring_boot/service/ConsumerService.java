@@ -36,12 +36,10 @@ public class ConsumerService {
         running = true;
 
         for (int i = 1; i <= consumerCount; i++) {
-            // Create and save the consumer in the database with a unique name
             Consumer consumer = new Consumer();
-            consumer.setName("Consumer-" + i + "-" + Thread.currentThread().getId()); // Make name unique by appending thread ID
+            consumer.setName("Consumer-" + i + "-" + System.nanoTime());
             consumerRepository.save(consumer);
 
-            // Pass the consumer ID to the consumer thread
             Long consumerId = consumer.getId();
 
             Thread consumerThread = new Thread(() -> runConsumer(retrievalRate, consumerId));
@@ -53,21 +51,18 @@ public class ConsumerService {
     private void runConsumer(int retrievalRate, Long consumerId) {
         while (running) {
             try {
-                synchronized (ticketPool) {
-                    Ticket ticket = ticketPool.retrieveTicket(); // Retrieve from pool
-                    if (ticket != null) {
-                        ticket.markAsSold();
-                        System.out.println("Consumer " + consumerId + " purchased ticket: " + ticket.getTicketId());
+                Ticket ticket = ticketPool.retrieveTicket();
+                if (ticket != null) {
+                    ticket.markAsSold();
+                    System.out.println("Consumer " + consumerId + " purchased ticket: " + ticket.getTicketId());
 
-                        // Create transaction and save to the database
-                        TicketTransaction transaction = new TicketTransaction();
-                        transaction.setTicketId(ticket.getTicketId());
-                        transaction.setConsumerId(consumerId);
-                        transaction.setVendorId(ticket.getVendorId());  // Set vendorId here
-                        ticketTransactionRepository.save(transaction);
-                    }
+                    TicketTransaction transaction = new TicketTransaction();
+                    transaction.setTicketId(ticket.getTicketId());
+                    transaction.setConsumerId(consumerId);
+                    transaction.setVendorId(ticket.getVendorId());
+                    ticketTransactionRepository.save(transaction);
                 }
-                Thread.sleep(retrievalRate); // Wait based on retrieval rate
+                Thread.sleep(retrievalRate);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -77,9 +72,12 @@ public class ConsumerService {
 
     public void stopConsumers() {
         running = false;
+        synchronized (ticketPool) {
+            ticketPool.notifyAll(); // Wake up all waiting threads
+        }
         consumerThreads.forEach(thread -> {
             try {
-                thread.join(); // Wait for threads to terminate
+                thread.join();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

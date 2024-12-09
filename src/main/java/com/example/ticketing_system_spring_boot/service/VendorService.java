@@ -15,6 +15,7 @@ public class VendorService {
     private final TicketPool ticketPool;
     private final List<Thread> vendorThreads = new ArrayList<>();
     private volatile boolean running = false;
+
     @Autowired
     private VendorRepository vendorRepository;
 
@@ -31,12 +32,10 @@ public class VendorService {
         running = true;
 
         for (int i = 1; i <= vendorCount; i++) {
-            // Create and save the vendor in the database
             Vendor vendor = new Vendor();
             vendor.setName("Vendor-" + i);
             vendorRepository.save(vendor);
 
-            // Pass the vendor ID to the vendor thread
             Long vendorId = vendor.getId();
 
             Thread vendorThread = new Thread(() -> runVendor(ticketReleaseRate, vendorId));
@@ -46,23 +45,17 @@ public class VendorService {
     }
 
     private void runVendor(int ticketReleaseRate, Long vendorId) {
+        Random random = new Random();
         while (running) {
             try {
-                int ticketId = new Random().nextInt(1000); // Generate ticket ID
-                Ticket ticket = new Ticket(ticketId, vendorId); // Pass vendorId when creating the ticket
+                int ticketId = random.nextInt(1000);
+                Ticket ticket = new Ticket(ticketId, vendorId);
 
-                synchronized (ticketPool) {
-                    boolean added = ticketPool.addTicket(ticket); // Add to pool
-                    if (added) {
-                        System.out.println("Vendor " + vendorId + " added ticket: " + ticketId);
-
-                        // Save vendor-ticket association to the database
-                        Vendor vendor = vendorRepository.findById(vendorId).orElseThrow();
-                        vendor.setTicketId(ticketId);
-                        vendorRepository.save(vendor);
-                    }
+                boolean added = ticketPool.addTicket(ticket);
+                if (added) {
+                    System.out.println("Vendor " + vendorId + " added ticket: " + ticketId);
                 }
-                Thread.sleep(ticketReleaseRate); // Wait based on release rate
+                Thread.sleep(ticketReleaseRate);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -72,6 +65,9 @@ public class VendorService {
 
     public void stopVendors() {
         running = false;
+        synchronized (ticketPool) {
+            ticketPool.notifyAll();
+        }
         vendorThreads.forEach(thread -> {
             try {
                 thread.join();

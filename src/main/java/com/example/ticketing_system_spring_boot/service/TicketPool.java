@@ -3,11 +3,10 @@ package com.example.ticketing_system_spring_boot.service;
 import com.example.ticketing_system_spring_boot.model.SystemConfiguration;
 import com.example.ticketing_system_spring_boot.model.Ticket;
 import com.example.ticketing_system_spring_boot.repository.ConfigurationRepository;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
 import java.util.LinkedList;
 
@@ -17,7 +16,7 @@ public class TicketPool {
 
     private final LinkedList<Ticket> tickets = new LinkedList<>();
     private final ConfigurationRepository configurationRepository;
-    private volatile int maxCapacity; // Ensures visibility across threads
+    private volatile int maxCapacity;
 
     @Autowired
     public TicketPool(ConfigurationRepository configurationRepository) {
@@ -28,15 +27,12 @@ public class TicketPool {
     private int fetchMaxCapacity() {
         return configurationRepository.findById(1L)
                 .map(SystemConfiguration::getMaxTicketCapacity)
-                .orElse(100); // Default value
+                .orElse(100);
     }
 
-    /**
-     * This method should be called when starting a simulation to fetch the latest configuration.
-     */
     public synchronized void initializeSimulation() {
         this.maxCapacity = fetchMaxCapacity();
-        tickets.clear(); // Optionally clear tickets if a new simulation implies a fresh start.
+        tickets.clear();
         logger.info("Simulation initialized with maxCapacity: {}", this.maxCapacity);
     }
 
@@ -58,7 +54,11 @@ public class TicketPool {
             while (tickets.isEmpty()) {
                 try {
                     logger.info("No tickets available. Waiting for tickets to be added...");
-                    tickets.wait();
+                    tickets.wait(5000); // Wait for a maximum of 5 seconds
+                    if (tickets.isEmpty()) {
+                        logger.warn("Timeout waiting for tickets.");
+                        return null;
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     logger.error("Thread interrupted while waiting for tickets", e);
@@ -73,8 +73,6 @@ public class TicketPool {
     }
 
     public synchronized int getAvailableTickets() {
-        int size = tickets.size();
-        logger.debug("Checking available tickets: {}", size);
-        return size;
+        return tickets.size();
     }
 }
