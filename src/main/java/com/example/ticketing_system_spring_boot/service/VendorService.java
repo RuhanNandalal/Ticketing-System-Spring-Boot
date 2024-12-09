@@ -1,6 +1,8 @@
 package com.example.ticketing_system_spring_boot.service;
 
 import com.example.ticketing_system_spring_boot.model.Ticket;
+import com.example.ticketing_system_spring_boot.model.Vendor;
+import com.example.ticketing_system_spring_boot.repository.VendorRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -12,7 +14,9 @@ import java.util.Random;
 public class VendorService {
     private final TicketPool ticketPool;
     private final List<Thread> vendorThreads = new ArrayList<>();
-    private volatile boolean running = false; // To control thread execution
+    private volatile boolean running = false;
+    @Autowired
+    private VendorRepository vendorRepository;
 
     @Autowired
     public VendorService(TicketPool ticketPool) {
@@ -25,26 +29,40 @@ public class VendorService {
         }
 
         running = true;
+
         for (int i = 1; i <= vendorCount; i++) {
-            Thread vendorThread = new Thread(() -> runVendor(ticketReleaseRate));
+            // Create and save the vendor in the database
+            Vendor vendor = new Vendor();
+            vendor.setName("Vendor-" + i);
+            vendorRepository.save(vendor);
+
+            // Pass the vendor ID to the vendor thread
+            Long vendorId = vendor.getId();
+
+            Thread vendorThread = new Thread(() -> runVendor(ticketReleaseRate, vendorId));
             vendorThreads.add(vendorThread);
             vendorThread.start();
         }
     }
 
-    private void runVendor(int ticketReleaseRate) {
-        Random random = new Random();
+    private void runVendor(int ticketReleaseRate, Long vendorId) {
         while (running) {
             try {
-                int ticketId = random.nextInt(1000);
-                Ticket ticket = new Ticket(ticketId);
+                int ticketId = new Random().nextInt(1000); // Generate ticket ID
+                Ticket ticket = new Ticket(ticketId, vendorId); // Pass vendorId when creating the ticket
 
                 synchronized (ticketPool) {
-                    ticketPool.addTicket(ticket);
-                }
+                    boolean added = ticketPool.addTicket(ticket); // Add to pool
+                    if (added) {
+                        System.out.println("Vendor " + vendorId + " added ticket: " + ticketId);
 
-                System.out.println("Vendor added ticket: " + ticketId);
-                Thread.sleep(ticketReleaseRate);
+                        // Save vendor-ticket association to the database
+                        Vendor vendor = vendorRepository.findById(vendorId).orElseThrow();
+                        vendor.setTicketId(ticketId);
+                        vendorRepository.save(vendor);
+                    }
+                }
+                Thread.sleep(ticketReleaseRate); // Wait based on release rate
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
