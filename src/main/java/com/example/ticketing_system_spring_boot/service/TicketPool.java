@@ -16,31 +16,38 @@ public class TicketPool {
     private static final Logger logger = LoggerFactory.getLogger(TicketPool.class);
 
     private final LinkedList<Ticket> tickets = new LinkedList<>();
-    private final int maxCapacity;
+    private final ConfigurationRepository configurationRepository;
+    private volatile int maxCapacity; // Ensures visibility across threads
 
-    // Initializing default value for max ticket capacity if a value not found in the database
     @Autowired
-    public TicketPool(ConfigurationRepository configurationRepository,
-                      @Value("${ticket.pool.maxCapacity:100}") int defaultMaxCapacity) {
-        // Attempt to fetch from the database, fallback to default
-        this.maxCapacity = configurationRepository.findById(1L)
-                .map(SystemConfiguration::getMaxTicketCapacity)
-                .orElseGet(() -> {
-                    logger.warn("Configuration with ID 1 not found. Using default value: {}", defaultMaxCapacity);
-                    return defaultMaxCapacity;
-                });
+    public TicketPool(ConfigurationRepository configurationRepository) {
+        this.configurationRepository = configurationRepository;
+        this.maxCapacity = fetchMaxCapacity();
+    }
 
-        logger.info("Initialized TicketPool with max capacity: {}", this.maxCapacity);
+    private int fetchMaxCapacity() {
+        return configurationRepository.findById(1L)
+                .map(SystemConfiguration::getMaxTicketCapacity)
+                .orElse(100); // Default value
+    }
+
+    /**
+     * This method should be called when starting a simulation to fetch the latest configuration.
+     */
+    public synchronized void initializeSimulation() {
+        this.maxCapacity = fetchMaxCapacity();
+        tickets.clear(); // Optionally clear tickets if a new simulation implies a fresh start.
+        logger.info("Simulation initialized with maxCapacity: {}", this.maxCapacity);
     }
 
     public boolean addTicket(Ticket ticket) {
         synchronized (tickets) {
             if (tickets.size() >= maxCapacity) {
                 logger.warn("Failed to add ticket {}: pool is at maximum capacity", ticket.getTicketId());
-                return false; // Reject ticket if the pool is full
+                return false;
             }
             tickets.add(ticket);
-            tickets.notifyAll(); // Notify waiting consumers
+            tickets.notifyAll();
             logger.info("Added ticket {} to the pool. Current size: {}", ticket.getTicketId(), tickets.size());
             return true;
         }
@@ -51,7 +58,7 @@ public class TicketPool {
             while (tickets.isEmpty()) {
                 try {
                     logger.info("No tickets available. Waiting for tickets to be added...");
-                    tickets.wait(); // Wait until a ticket is available
+                    tickets.wait();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     logger.error("Thread interrupted while waiting for tickets", e);
@@ -59,7 +66,7 @@ public class TicketPool {
                 }
             }
             Ticket ticket = tickets.removeFirst();
-            tickets.notifyAll(); // Notify waiting vendors
+            tickets.notifyAll();
             logger.info("Retrieved ticket {} from the pool. Remaining size: {}", ticket.getTicketId(), tickets.size());
             return ticket;
         }

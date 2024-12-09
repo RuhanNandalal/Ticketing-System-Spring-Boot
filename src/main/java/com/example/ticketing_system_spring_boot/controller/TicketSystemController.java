@@ -2,6 +2,7 @@ package com.example.ticketing_system_spring_boot.controller;
 
 import com.example.ticketing_system_spring_boot.model.SystemConfiguration;
 import com.example.ticketing_system_spring_boot.repository.ConfigurationRepository;
+import com.example.ticketing_system_spring_boot.service.TicketPool;
 import com.example.ticketing_system_spring_boot.service.TicketingService;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
@@ -16,11 +17,13 @@ import java.util.Optional;
 public class TicketSystemController {
     private final TicketingService ticketingService;
     private final ConfigurationRepository configurationRepository;
+    private final TicketPool ticketPool;
 
     @Autowired
-    public TicketSystemController(TicketingService ticketingService, ConfigurationRepository configurationRepository) {
+    public TicketSystemController(TicketingService ticketingService, ConfigurationRepository configurationRepository, TicketPool ticketPool) {
         this.ticketingService = ticketingService;
         this.configurationRepository = configurationRepository;
+        this.ticketPool = ticketPool;
     }
     // Save or Update Configuration
     @PostMapping("/configuration")
@@ -58,10 +61,13 @@ public class TicketSystemController {
         int ticketReleaseRate = configuration.getTicketReleaseRate();
         int retrievalRate = configuration.getCustomerRetrievalRate();
 
+        // Update TicketPool's maxCapacity to the latest value from the database
+        ticketPool.initializeSimulation(); // Fetches the latest maxCapacity and prepares the pool
+
         // Pass all necessary parameters to start the simulation
         ticketingService.startSimulation(vendorCount, ticketReleaseRate, consumerCount, retrievalRate);
 
-        return ResponseEntity.ok("Simulation started");
+        return ResponseEntity.ok("Simulation started with updated configuration.");
     }
 
     @PostMapping("/stop")
