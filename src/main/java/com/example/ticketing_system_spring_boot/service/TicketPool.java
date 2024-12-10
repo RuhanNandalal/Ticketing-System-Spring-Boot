@@ -7,8 +7,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.util.LinkedList;
+import java.util.Map;
 
 @Service
 public class TicketPool {
@@ -16,11 +18,13 @@ public class TicketPool {
 
     private final LinkedList<Ticket> tickets = new LinkedList<>();
     private final ConfigurationRepository configurationRepository;
+    private final SimpMessagingTemplate messagingTemplate;
     private volatile int maxCapacity;
 
     @Autowired
-    public TicketPool(ConfigurationRepository configurationRepository) {
+    public TicketPool(ConfigurationRepository configurationRepository, SimpMessagingTemplate messagingTemplate) {
         this.configurationRepository = configurationRepository;
+        this.messagingTemplate = messagingTemplate;
         this.maxCapacity = fetchMaxCapacity();
     }
 
@@ -38,23 +42,36 @@ public class TicketPool {
 
     public boolean addTicket(Ticket ticket) {
         synchronized (tickets) {
+            if (ticket == null || ticket.getTicketId() <= 0 || ticket.getVendorId() == null) {
+                logger.error("Cannot add invalid ticket: {}", ticket);
+                return false;
+            }
+
             if (tickets.size() >= maxCapacity) {
                 logger.warn("Failed to add ticket {}: pool is at maximum capacity", ticket.getTicketId());
                 return false;
             }
+
             tickets.add(ticket);
             tickets.notifyAll();
+
+            messagingTemplate.convertAndSend("/topic/simulation", Map.of(
+                    "type", "ticketAdded",
+                    "vendorId", ticket.getVendorId(),
+                    "ticketId", ticket.getTicketId()
+            ));
+
             logger.info("Added ticket {} to the pool. Current size: {}", ticket.getTicketId(), tickets.size());
             return true;
         }
     }
 
-    public Ticket retrieveTicket() {
+    public Map<String, Object> retrieveTicketDetails() {
         synchronized (tickets) {
             while (tickets.isEmpty()) {
                 try {
                     logger.info("No tickets available. Waiting for tickets to be added...");
-                    tickets.wait(5000); // Wait for a maximum of 5 seconds
+                    tickets.wait(5000);
                     if (tickets.isEmpty()) {
                         logger.warn("Timeout waiting for tickets.");
                         return null;
@@ -65,10 +82,24 @@ public class TicketPool {
                     return null;
                 }
             }
+
             Ticket ticket = tickets.removeFirst();
             tickets.notifyAll();
-            logger.info("Retrieved ticket {} from the pool. Remaining size: {}", ticket.getTicketId(), tickets.size());
-            return ticket;
+
+            if (ticket == null || ticket.getTicketId() <= 0 || ticket.getVendorId() == null) {
+                logger.error("Invalid ticket retrieved: {}", ticket);
+                return null;
+            }
+
+            Map<String, Object> detailedTicketInfo = Map.of(
+                    "ticketId", ticket.getTicketId(),
+                    "vendorId", ticket.getVendorId()
+            );
+
+            messagingTemplate.convertAndSend("/topic/simulation", detailedTicketInfo);
+
+            logger.info("Retrieved detailed ticket info {} from the pool. Remaining size: {}", detailedTicketInfo, tickets.size());
+            return detailedTicketInfo;
         }
     }
 
