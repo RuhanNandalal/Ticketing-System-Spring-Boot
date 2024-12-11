@@ -15,7 +15,7 @@ import java.util.Map;
 
 @Service
 public class ConsumerService {
-    private static final Logger logger = LoggerFactory.getLogger(TicketPool.class);
+    private static final Logger logger = LoggerFactory.getLogger(ConsumerService.class);
 
     private final TicketPool ticketPool;
     private final List<Thread> consumerThreads = new ArrayList<>();
